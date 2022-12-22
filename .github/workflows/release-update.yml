@@ -1,0 +1,92 @@
+name: Update release with new tag and assets
+
+on:
+  workflow_call:
+    inputs:
+      asset_creation_script:
+        required: true
+        type: string
+
+jobs:
+  update_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: 'Get PR title and body'
+        run: |
+          continue=true
+          pr_title="${{ github.event.pull_request.title }}"
+          [ -z "${pr_title}" ] && continue=false
+
+          pr_body="${{ github.event.pull_request.body }}"
+          
+          echo "PR_TITLE="${pr_title}"" >> $GITHUB_ENV
+          echo "PR_BODY="${pr_body}"" >> $GITHUB_ENV
+          echo "CONTINUE="${continue}"" >> $GITHUB_ENV
+
+      - uses: actions-ecosystem/action-regex-match@v2
+        name: 'Retrieve -r flag value from title'
+        id: regex-match
+        if: ${{ env.CONTINUE == 'true' }}
+        with:
+          text: ${{ env.PR_TITLE }}
+          # Matches -r flag value, only M m and p characters
+          regex: '(?<=(-r))[ |:|\\]*(?<value>[M|m|p]*)(?=[ |\\]|$)'
+
+      - name: 'Check SemVer update option, add to env'
+        if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          option="${{ steps.regex-match.outputs.match }}"
+          [ -z "${option}" ] && echo "CONTINUE=false" >> $GITHUB_ENV
+          echo "OPTION="${option}"" >> $GITHUB_ENV
+
+      - uses: actions-ecosystem/action-get-latest-tag@v1
+        name: 'Get last SemVer tag'
+        id: get-latest-tag
+        if: ${{ env.CONTINUE == 'true' }}
+      - name: 'Add last tag to env'
+        if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          old_tag="${{ steps.get-latest-tag.outputs.tag }}"
+          [ -z "${old_tag}" ] && old_tag=v0.0.0
+          echo "OLD_TAG="${old_tag}"" >> $GITHUB_ENV
+
+      - name: 'Get level from option'
+        if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          case `echo $OPTION | xargs` in
+            M) level="major";;
+            m) level="minor";;
+            p) level="patch";;
+          esac
+          echo "LEVEL="${level}"" >> $GITHUB_ENV
+
+      - uses: actions-ecosystem/action-bump-semver@v1
+        name: 'Update SemVer tag' 
+        id: bump-semver-patch
+        if: ${{ env.CONTINUE == 'true' }}
+        with:
+          current_version: ${{ env.OLD_TAG }}
+          level: ${{ env.LEVEL }}
+      - name: 'Add new to tag to env'
+        if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          echo "NEW_TAG=${{ steps.bump-semver-patch.outputs.new_version }}" >> $GITHUB_ENV
+
+      - name: 'Create assets'
+        if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          eval ${{ inputs.asset_creation_script }}
+          echo "$(ls -la)"
+
+      - uses: meeDamian/github-release@2.0
+        name: 'Update Release'
+        if: ${{ env.CONTINUE == 'true' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ env.NEW_TAG }}
+          name: Release ${{env.NEW_TAG}}
+          body: ${{ env.PR_BODY }}
+          gzip: folders
+          files: ${{ env.FILES }}
