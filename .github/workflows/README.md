@@ -2,7 +2,10 @@
 
 CI reusable workflow for github actions.
 
+Existing version tag should be SemVer(major.minor.patch) with v prefix. F.E. v0.0.1
+
 Usage
+
 
 ```yml
 jobs:
@@ -22,3 +25,5 @@ jobs:
         echo "FILES="stuff.zip entry.zip new.zip"" >> $GITHUB_ENV
 
 ```
+
+You can access tag value in script from env under NEW_TAG variable
