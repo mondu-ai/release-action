@@ -90,3 +90,55 @@ jobs:
           body: ${{ env.PR_BODY }}
           gzip: folders
           files: ${{ env.FILES }}
+
+      - uses: slackapi/slack-github-action@v1.23.0
+        name: 'Send update to slack #release-alerts channel'
+        id: slack
+        if: ${{ env.CONTINUE == 'true' }}
+        with:
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Release update",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:* <https://github.com/${{ github.repository }}|${{ github.repository }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:* <https://github.com/${{ github.repository }}/tree/${{ github.event.repository.default_branch }}/|${{ github.event.repository.default_branch }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Pull Request:* <https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}|${{ env.PR_TITLE }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:* <<https://github.com/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }}|${{ github.event.pull_request.head.sha }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Tag:* ${{ env.NEW_TAG}}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Assets:* <https://github.com/${{ github.repository }}/releases/tag/${{ env.NEW_TAG}}| Files>"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
