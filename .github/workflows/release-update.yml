@@ -29,6 +29,7 @@ jobs:
           echo "CONTINUE="${continue}"" >> $GITHUB_ENV
 
       - uses: AsasInnab/regex-action@v1
+        name: 'Get tickets ids from PR body'
         id: regex-match-tickets
         with:
           regex_pattern: '(?<=(Tickets:))[ |:|\\]*(?<value>[a-zA-Z0-9_.,\ -]*)(?=[ |\\]|$)'
@@ -36,6 +37,7 @@ jobs:
           search_string: ${{ env.PR_BODY }}
 
       - uses: AsasInnab/regex-action@v1
+        name: 'Get Release level from PR body'
         id: regex-match-release
         with:
           regex_pattern: '(?<=(Release:))[ |:|\\]*(?<value>[M|m|p]*)(?=[ |\\]|$)'
@@ -99,7 +101,7 @@ jobs:
           gzip: folders
           files: ${{ env.FILES }}
 
-      - name: 'Create assets'
+      - name: 'Post release script'
         if: ${{ env.CONTINUE == 'true' }}
         run: |
           eval ${{ inputs.post_script }}
