@@ -6,6 +6,9 @@ on:
       asset_creation_script:
         required: true
         type: string
+      post_script:
+        required: false
+        type: string
 
 jobs:
   update_release:
@@ -17,9 +20,9 @@ jobs:
         run: |
           continue=true
           pr_title="${{ github.event.pull_request.title }}"
-          [ -z "${pr_title}" ] && continue=false
 
           pr_body="${{ github.event.pull_request.body }}"
+          [ -z "${pr_body}" ] && continue=false
           
           echo "PR_TITLE="${pr_title}"" >> $GITHUB_ENV
           echo "PR_BODY="${pr_body}"" >> $GITHUB_ENV
@@ -96,6 +99,11 @@ jobs:
           gzip: folders
           files: ${{ env.FILES }}
 
+      - name: 'Create assets'
+        if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          eval ${{ inputs.post_script }}
+
       - name: 'Ticket links, blocks for slack notification'
         if: ${{ env.CONTINUE == 'true' }}
         run: |
@@ -117,7 +125,7 @@ jobs:
 
       - uses: slackapi/slack-github-action@v1.23.0
         name: 'Send update to slack #release-alerts channel on success'
-        if: ${{ success() }}
+        if: ${{ success() && env.CONTINUE == 'true' }}
         with:
           payload: |
             {
