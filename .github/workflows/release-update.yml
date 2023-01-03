@@ -6,6 +6,9 @@ on:
       asset_creation_script:
         required: true
         type: string
+      post_script:
+        required: false
+        type: string
 
 jobs:
   update_release:
@@ -17,27 +20,34 @@ jobs:
         run: |
           continue=true
           pr_title="${{ github.event.pull_request.title }}"
-          [ -z "${pr_title}" ] && continue=false
 
           pr_body="${{ github.event.pull_request.body }}"
+          [ -z "${pr_body}" ] && continue=false
           
           echo "PR_TITLE="${pr_title}"" >> $GITHUB_ENV
           echo "PR_BODY="${pr_body}"" >> $GITHUB_ENV
           echo "CONTINUE="${continue}"" >> $GITHUB_ENV
 
-      - uses: actions-ecosystem/action-regex-match@v2
-        name: 'Retrieve -r flag value from title'
-        id: regex-match
-        if: ${{ env.CONTINUE == 'true' }}
+      - uses: AsasInnab/regex-action@v1
+        name: 'Get tickets ids from PR body'
+        id: regex-match-tickets
         with:
-          text: ${{ env.PR_TITLE }}
-          # Matches -r flag value, only M m and p characters
-          regex: '(?<=(-r))[ |:|\\]*(?<value>[M|m|p]*)(?=[ |\\]|$)'
+          regex_pattern: '(?<=(Tickets:))[ |:|\\]*(?<value>[a-zA-Z0-9_.,\ -]*)(?=[ |\\]|$)'
+          regex_flags: gm
+          search_string: ${{ env.PR_BODY }}
+
+      - uses: AsasInnab/regex-action@v1
+        name: 'Get Release level from PR body'
+        id: regex-match-release
+        with:
+          regex_pattern: '(?<=(Release:))[ |:|\\]*(?<value>[M|m|p]*)(?=[ |\\]|$)'
+          regex_flags: gm
+          search_string: ${{ env.PR_BODY }}
 
       - name: 'Check SemVer update option, add to env'
         if: ${{ env.CONTINUE == 'true' }}
         run: |
-          option="${{ steps.regex-match.outputs.match }}"
+          option="${{ steps.regex-match-release.outputs.first_match }}"
           [ -z "${option}" ] && echo "CONTINUE=false" >> $GITHUB_ENV
           echo "OPTION="${option}"" >> $GITHUB_ENV
 
@@ -91,10 +101,33 @@ jobs:
           gzip: folders
           files: ${{ env.FILES }}
 
-      - uses: slackapi/slack-github-action@v1.23.0
-        name: 'Send update to slack #release-alerts channel'
-        id: slack
+      - name: 'Post release script'
         if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          eval ${{ inputs.post_script }}
+
+      - name: 'Ticket links, blocks for slack notification'
+        if: ${{ env.CONTINUE == 'true' }}
+        run: |
+          tickets="${{ steps.regex-match-tickets.outputs.first_match }}"
+          tickets=`echo $tickets | xargs` # Removed whitespaces
+          IFS=', ' read -r -a tickets_array <<< "$tickets"
+
+          blocks=""
+
+          for index in "${!tickets_array[@]}"
+          do
+            blocks="${blocks},
+                    {\"type\": \"mrkdwn\",
+                      \"text\": \"*Ticket ${index}:* <https://mondu.atlassian.net/browse/${tickets_array[index]}| ${tickets_array[index]}>\"
+                    }"
+          done
+
+          echo "TICKETS_BLOCKS="${blocks}"" >> $GITHUB_ENV
+
+      - uses: slackapi/slack-github-action@v1.23.0
+        name: 'Send update to slack #release-alerts channel on success'
+        if: ${{ success() && env.CONTINUE == 'true' }}
         with:
           payload: |
             {
@@ -103,8 +136,7 @@ jobs:
                   "type": "header",
                   "text": {
                     "type": "plain_text",
-                    "text": "Release update",
-                    "emoji": true
+                    "text": "Release update finished with success"
                   }
                 },
                 {
@@ -124,7 +156,7 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Commit:* <<https://github.com/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }}|${{ github.event.pull_request.head.sha }}>"
+                      "text": "*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }}|${{ github.event.pull_request.head.sha }}>"
                     },
                     {
                       "type": "mrkdwn",
@@ -132,8 +164,9 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Assets:* <https://github.com/${{ github.repository }}/releases/tag/${{ env.NEW_TAG}}| Files>"
+                      "text": "*Release:* <https://github.com/${{ github.repository }}/releases/tag/${{ env.NEW_TAG}}| Files>"
                     }
+                    ${{ env.TICKETS_BLOCKS }}
                   ]
                 }
               ]
@@ -142,3 +175,47 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
+      - uses: slackapi/slack-github-action@v1.23.0
+        name: 'Send update to slack #release-alerts channel on failure'
+        if: ${{ failure() }}
+        with:
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Release update cancelled with failure"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:* <https://github.com/${{ github.repository }}|${{ github.repository }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:* <https://github.com/${{ github.repository }}/tree/${{ github.event.repository.default_branch }}/|${{ github.event.repository.default_branch }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Pull Request:* <https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}|${{ env.PR_TITLE }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }}|${{ github.event.pull_request.head.sha }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} | Failed job>"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
