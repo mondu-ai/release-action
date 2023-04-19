@@ -29,7 +29,6 @@ jobs:
 List of environment variables that you can access in asset_creation_script
 
 - *PR_TITLE*: Title of trigger PR
-- *PR_BODY*: Body of trigger PR
 - *LEVEL*: SemVer update level p/m/M
 - *OLD_TAG*: Old Semver Tag
 - *NEW_TAG*: New Semver Tag
