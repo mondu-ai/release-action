@@ -21,11 +21,7 @@ jobs:
           continue=true
           pr_title="${{ github.event.pull_request.title }}"
 
-          pr_body="${{ github.event.pull_request.body }}"
-          [ -z "${pr_body}" ] && continue=false
-          
           echo "PR_TITLE="${pr_title}"" >> $GITHUB_ENV
-          echo "PR_BODY="${pr_body}"" >> $GITHUB_ENV
           echo "CONTINUE="${continue}"" >> $GITHUB_ENV
 
       - uses: AsasInnab/regex-action@v1
@@ -34,7 +30,7 @@ jobs:
         with:
           regex_pattern: '(?<=(Tickets:))[ |:|\\]*(?<value>[a-zA-Z0-9_.,\ -]*)(?=[ |\\]|$)'
           regex_flags: gm
-          search_string: ${{ env.PR_BODY }}
+          search_string: ${{ github.event.pull_request.body }}
 
       - uses: AsasInnab/regex-action@v1
         name: 'Get Release level from PR body'
@@ -42,7 +38,7 @@ jobs:
         with:
           regex_pattern: '(?<=(Release:))[ |:|\\]*(?<value>[M|m|p]*)(?=[ |\\]|$)'
           regex_flags: gm
-          search_string: ${{ env.PR_BODY }}
+          search_string: ${{ github.event.pull_request.body }}
 
       - name: 'Check SemVer update option, add to env'
         if: ${{ env.CONTINUE == 'true' }}
@@ -97,7 +93,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ env.NEW_TAG }}
           name: Release ${{env.NEW_TAG}}
-          body: ${{ env.PR_BODY }}
+          body: ${{ github.event.pull_request.body }}
           gzip: folders
           files: ${{ env.FILES }}
 
